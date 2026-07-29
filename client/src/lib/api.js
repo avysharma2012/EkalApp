@@ -158,3 +158,24 @@ export async function fetchVolunteers() {
 export function promoteToAdmin(userId) {
   return unwrap(supabase.from('profiles').update({ role: 'admin' }).eq('id', userId).select().single());
 }
+
+export function fetchVolunteerRoster() {
+  return unwrap(supabase.from('profiles').select('id, name, email').order('name'));
+}
+
+export function adminLogHoursForVolunteer({ userId, activity, log_date, hours, notes, event_id, autoApprove, adminId }) {
+  const payload = {
+    user_id: userId,
+    activity,
+    log_date,
+    hours,
+    notes: notes || null,
+    event_id: event_id || null,
+  };
+  if (autoApprove) {
+    payload.status = 'approved';
+    payload.reviewed_by = adminId;
+    payload.reviewed_at = new Date().toISOString();
+  }
+  return unwrap(supabase.from('hour_logs').insert(payload).select().single());
+}

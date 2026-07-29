@@ -16,6 +16,7 @@ export function Navbar() {
     ? [
         { to: '/', label: 'Dashboard' },
         { to: '/admin/approvals', label: 'Approvals' },
+        { to: '/admin/log-hours', label: 'Log Hours' },
         { to: '/admin/events', label: 'Events' },
         { to: '/admin/volunteers', label: 'Volunteers' },
         { to: '/admin/announcements', label: 'Announcements' },
