@@ -23,7 +23,11 @@ export function Navbar() {
         { to: '/admin/events', label: 'Events' },
         { to: '/admin/volunteers', label: 'Volunteers' },
         { to: announcementsTo, label: 'Announcements' },
-        ...(isSuperAdmin ? [{ to: '/admin/chapters', label: 'Chapters' }] : []),
+        { to: '/admin/audit-log', label: 'Audit Log' },
+        ...(isSuperAdmin ? [
+          { to: '/admin/chapters', label: 'Chapters' },
+          { to: '/admin/visitor-analytics', label: 'Visitor Analytics' },
+        ] : []),
       ]
     : [
         { to: '/', label: 'Dashboard' },

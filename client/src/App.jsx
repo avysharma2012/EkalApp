@@ -25,6 +25,8 @@ import { CertificatesPage } from './pages/CertificatesPage';
 import { CertificateViewPage } from './pages/CertificateViewPage';
 import { AdminCertificatesPage } from './pages/AdminCertificatesPage';
 import { AnnouncementsPage } from './pages/AnnouncementsPage';
+import { AdminAuditLogPage } from './pages/AdminAuditLogPage';
+import { AdminVisitorAnalyticsPage } from './pages/AdminVisitorAnalyticsPage';
 
 function DashboardRouter() {
   const { isAdmin } = useAuth();
@@ -61,6 +63,8 @@ function App() {
           <Route path="/admin/bulk-import" element={<ProtectedRoute adminOnly><AdminBulkImportPage /></ProtectedRoute>} />
           <Route path="/admin/announcements" element={<ProtectedRoute adminOnly><AdminAnnouncementsPage /></ProtectedRoute>} />
           <Route path="/admin/chapters" element={<ProtectedRoute superAdminOnly><AdminChaptersPage /></ProtectedRoute>} />
+          <Route path="/admin/audit-log" element={<ProtectedRoute adminOnly><AdminAuditLogPage /></ProtectedRoute>} />
+          <Route path="/admin/visitor-analytics" element={<ProtectedRoute superAdminOnly><AdminVisitorAnalyticsPage /></ProtectedRoute>} />
 
           {/* GATE-01: any other/unknown route falls back through ProtectedRoute's guard to the gate. */}
           <Route path="*" element={<ProtectedRoute><DashboardRouter /></ProtectedRoute>} />

@@ -401,6 +401,32 @@ export async function logVisitor(path, geo) {
   }
 }
 
+// VIS-03: super-admin only (enforced by RLS); capped like the audit log.
+export function fetchVisitorLogs() {
+  return unwrap(
+    supabase
+      .from('visitor_logs')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(500)
+  );
+}
+
+export async function fetchVisitorStats() {
+  const [{ count: total }, { count: botCount }] = await Promise.all([
+    supabase.from('visitor_logs').select('*', { count: 'exact', head: true }),
+    supabase.from('visitor_logs').select('*', { count: 'exact', head: true }).eq('is_bot', true),
+  ]);
+  const { data: ipRows } = await supabase.from('visitor_logs').select('ip').not('ip', 'is', null);
+  const uniqueIps = new Set((ipRows || []).map((r) => r.ip)).size;
+  return {
+    total: total || 0,
+    botCount: botCount || 0,
+    humanCount: (total || 0) - (botCount || 0),
+    uniqueIps,
+  };
+}
+
 // ---- Access requests (GATE / AREQ) ----
 export async function submitAccessRequest({ name, email, chapterId, geo }) {
   const { error } = await supabase.rpc('submit_access_request', {
