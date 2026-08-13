@@ -32,9 +32,16 @@ export function AuthProvider({ children }) {
       loadProfile(session?.user?.id).finally(() => setLoading(false));
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
       loadProfile(session?.user?.id);
+      // HashRouter and Supabase's recovery-link token both live in the URL
+      // hash, so the router never sees "/reset-password" as the path when a
+      // recovery/magic-link token is present — it just sees the token as an
+      // unmatched route and falls through. Force it there explicitly.
+      if (event === 'PASSWORD_RECOVERY') {
+        window.location.hash = '#/reset-password';
+      }
     });
 
     return () => listener.subscription.unsubscribe();
