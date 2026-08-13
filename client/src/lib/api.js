@@ -36,30 +36,43 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 2500) {
 
 // ---- Events ----
 export async function fetchEvents() {
-  const { data: events, error } = await supabase.from('events').select('*').order('event_date', { ascending: true });
+  const { data: events, error } = await supabase.from('events').select('*, chapters(name)').order('event_date', { ascending: true });
   if (error) throw error;
 
   const { data: { user } } = await supabase.auth.getUser();
-  const { data: signups } = await supabase.from('event_signups').select('event_id').eq('user_id', user.id);
-  const signedUpIds = new Set((signups || []).map((s) => s.event_id));
+  const { data: mySignups } = await supabase.from('event_signups').select('event_id, notes').eq('user_id', user.id);
+  const mySignupByEvent = Object.fromEntries((mySignups || []).map((s) => [s.event_id, s]));
 
   const counts = {};
   const { data: allSignups } = await supabase.from('event_signups').select('event_id');
   (allSignups || []).forEach((s) => { counts[s.event_id] = (counts[s.event_id] || 0) + 1; });
 
-  return events.map((e) => ({ ...e, signed_up: signedUpIds.has(e.id), signup_count: counts[e.id] || 0 }));
+  return events.map((e) => ({
+    ...e,
+    signed_up: !!mySignupByEvent[e.id],
+    my_notes: mySignupByEvent[e.id]?.notes || '',
+    signup_count: counts[e.id] || 0,
+  }));
 }
 
 export function createEvent(event) {
   return unwrap(supabase.from('events').insert(event).select().single());
 }
 
+export function updateEvent(id, patch) {
+  return unwrap(supabase.from('events').update(patch).eq('id', id).select().single());
+}
+
 export function deleteEvent(id) {
   return unwrap(supabase.from('events').delete().eq('id', id));
 }
 
-export function signUpForEvent(eventId, userId) {
-  return unwrap(supabase.from('event_signups').insert({ event_id: eventId, user_id: userId }));
+export function signUpForEvent(eventId, userId, notes) {
+  return unwrap(supabase.from('event_signups').insert({ event_id: eventId, user_id: userId, notes: notes || null }));
+}
+
+export function updateSignupNotes(eventId, userId, notes) {
+  return unwrap(supabase.from('event_signups').update({ notes: notes || null }).eq('event_id', eventId).eq('user_id', userId));
 }
 
 export function cancelSignup(eventId, userId) {
@@ -70,10 +83,14 @@ export function fetchEventSignups(eventId) {
   return unwrap(
     supabase
       .from('event_signups')
-      .select('signed_up_at, profiles(id, name, email)')
+      .select('signed_up_at, notes, profiles(id, name, email)')
       .eq('event_id', eventId)
       .order('signed_up_at', { ascending: true })
   );
+}
+
+export function syncEkalEvents() {
+  return callEdgeFunction('sync-ekal-events', {});
 }
 
 // ---- Hour logs ----
