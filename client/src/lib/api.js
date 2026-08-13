@@ -105,52 +105,68 @@ export async function fetchMyHours(userId) {
 }
 
 export function createHourLog(log) {
+  // status/reviewed_by/reviewed_at/chapter_id are all forced server-side by
+  // a trigger regardless of what's sent here (HRS-02/CHAP-08).
   return unwrap(supabase.from('hour_logs').insert(log).select().single());
 }
 
 export function fetchAllHourLogs(status) {
   let q = supabase
     .from('hour_logs')
-    .select('*, profiles!hour_logs_user_id_fkey(name, email), events(title)')
+    .select('*, profiles!hour_logs_user_id_fkey(name, email), events(title), chapters(name)')
     .order('created_at', { ascending: true });
   if (status) q = q.eq('status', status);
   return unwrap(q);
 }
 
-export function reviewHourLog(id, decision, reviewerId) {
+// HRS-06: approving requires a typed signature; each record (including each
+// row of a bulk approval) is reviewed and audit-logged individually.
+export function approveHourLog(id, signature, reviewerId) {
   return unwrap(
     supabase
       .from('hour_logs')
-      .update({ status: decision, reviewed_by: reviewerId, reviewed_at: new Date().toISOString() })
+      .update({ status: 'approved', signature, reviewed_by: reviewerId, reviewed_at: new Date().toISOString(), rejection_reason: null })
       .eq('id', id)
       .select()
       .single()
   );
 }
 
-export async function downloadCertificate(logId) {
-  const { data: { session } } = await supabase.auth.getSession();
-  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-certificate`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${session.access_token}`,
-      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-    },
-    body: JSON.stringify({ logId }),
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || 'Failed to generate certificate');
-  }
-  const blob = await res.blob();
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = `ekal-certificate-${logId}.pdf`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
+// HRS-07: rejecting requires a reason, shown back to the volunteer.
+export function rejectHourLog(id, reason, reviewerId) {
+  return unwrap(
+    supabase
+      .from('hour_logs')
+      .update({ status: 'rejected', rejection_reason: reason, signature: null, reviewed_by: reviewerId, reviewed_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single()
+  );
+}
+
+// HRS-08: clears reviewer/timestamp/signature/rejection reason, back to Pending.
+export function resetHourLogToPending(id) {
+  return unwrap(
+    supabase
+      .from('hour_logs')
+      .update({ status: 'pending', signature: null, rejection_reason: null, reviewed_by: null, reviewed_at: null })
+      .eq('id', id)
+      .select()
+      .single()
+  );
+}
+
+// HRS-09: a volunteer's own approved hours within an optional date range.
+export async function fetchApprovedHoursInRange(userId, { from, to } = {}) {
+  let q = supabase
+    .from('hour_logs')
+    .select('*, profiles!hour_logs_reviewed_by_fkey(name)')
+    .eq('user_id', userId)
+    .eq('status', 'approved')
+    .order('log_date', { ascending: false });
+  if (from) q = q.gte('log_date', from);
+  if (to) q = q.lte('log_date', to);
+  return unwrap(q);
 }
 
 // ---- Announcements ----
@@ -434,23 +450,6 @@ export async function updatePassword(newPassword) {
   if (error) throw error;
 }
 
-export function adminLogHoursForVolunteer({ userId, activity, log_date, hours, notes, event_id, autoApprove, adminId }) {
-  const payload = {
-    user_id: userId,
-    activity,
-    log_date,
-    hours,
-    notes: notes || null,
-    event_id: event_id || null,
-  };
-  if (autoApprove) {
-    payload.status = 'approved';
-    payload.reviewed_by = adminId;
-    payload.reviewed_at = new Date().toISOString();
-  }
-  return unwrap(supabase.from('hour_logs').insert(payload).select().single());
-}
-
 // ---- Admin user management (USER-02/03/10) ----
 export function createUser({ name, email, password, chapterId }) {
   return callEdgeFunction('admin-create-user', { name, email, password, chapterId });
@@ -477,6 +476,90 @@ export function resolveChapterByName(chapters, chapterName, parentName) {
     if (matches.length === 0) return { chapterId: null, error: `"${chapterName}" is not a sub-chapter of "${parentName}"` };
   }
   return { chapterId: matches[0].id, error: null };
+}
+
+// ---- Certificate requests (CERT-01..07) ----
+// hourLogIds/note are the only client-controlled fields — status/chapter_id/
+// reviewer fields are all forced server-side by a trigger (same pattern as
+// hour_logs).
+export async function createCertificateRequest(userId, hourLogIds, note) {
+  const request = await unwrap(
+    supabase.from('certificate_requests').insert({ user_id: userId, note: note || null }).select().single()
+  );
+  const links = hourLogIds.map((hourLogId) => ({ certificate_request_id: request.id, hour_log_id: hourLogId }));
+  const { error } = await supabase.from('certificate_request_hours').insert(links);
+  if (error) throw error;
+  return request;
+}
+
+export async function fetchMyCertificateRequests(userId) {
+  const requests = await unwrap(
+    supabase
+      .from('certificate_requests')
+      .select('*, signer:profiles!certificate_requests_reviewed_by_fkey(name)')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+  );
+  return attachCertificateTotals(requests);
+}
+
+export async function fetchPendingCertificateRequests() {
+  const requests = await unwrap(
+    supabase
+      .from('certificate_requests')
+      .select('*, profiles!certificate_requests_user_id_fkey(name, email)')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true })
+  );
+  return attachCertificateTotals(requests);
+}
+
+export async function fetchCertificateRequestDetail(id) {
+  const request = await unwrap(
+    supabase
+      .from('certificate_requests')
+      .select('*, profiles!certificate_requests_user_id_fkey(name, email), signer:profiles!certificate_requests_reviewed_by_fkey(name)')
+      .eq('id', id)
+      .single()
+  );
+  const links = await unwrap(
+    supabase.from('certificate_request_hours').select('hour_logs(*)').eq('certificate_request_id', id)
+  );
+  return { ...request, activities: links.map((l) => l.hour_logs) };
+}
+
+async function attachCertificateTotals(requests) {
+  const results = [];
+  for (const r of requests) {
+    const links = await unwrap(
+      supabase.from('certificate_request_hours').select('hour_logs(hours)').eq('certificate_request_id', r.id)
+    );
+    const totalHours = links.reduce((sum, l) => sum + Number(l.hour_logs?.hours || 0), 0);
+    results.push({ ...r, total_hours: totalHours, activity_count: links.length });
+  }
+  return results;
+}
+
+export function approveCertificateRequest(id, signature, dateIssued, reviewerId) {
+  return unwrap(
+    supabase
+      .from('certificate_requests')
+      .update({ status: 'approved', signature, date_issued: dateIssued, reviewed_by: reviewerId, reviewed_at: new Date().toISOString(), rejection_reason: null })
+      .eq('id', id)
+      .select()
+      .single()
+  );
+}
+
+export function rejectCertificateRequest(id, reason, reviewerId) {
+  return unwrap(
+    supabase
+      .from('certificate_requests')
+      .update({ status: 'rejected', rejection_reason: reason, reviewed_by: reviewerId, reviewed_at: new Date().toISOString() })
+      .eq('id', id)
+      .select()
+      .single()
+  );
 }
 
 // ---- Event enrollment (USER-08) ----

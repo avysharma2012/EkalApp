@@ -20,6 +20,10 @@ import { AdminAnnouncementsPage } from './pages/AdminAnnouncementsPage';
 import { AdminChaptersPage } from './pages/AdminChaptersPage';
 import { AdminAccessRequestsPage } from './pages/AdminAccessRequestsPage';
 import { AdminBulkImportPage } from './pages/AdminBulkImportPage';
+import { VerifiedHoursReportPage } from './pages/VerifiedHoursReportPage';
+import { CertificatesPage } from './pages/CertificatesPage';
+import { CertificateViewPage } from './pages/CertificateViewPage';
+import { AdminCertificatesPage } from './pages/AdminCertificatesPage';
 
 function DashboardRouter() {
   const { isAdmin } = useAuth();
@@ -42,8 +46,12 @@ function App() {
           <Route path="/hours" element={<ProtectedRoute><LogHoursPage /></ProtectedRoute>} />
           <Route path="/events" element={<ProtectedRoute><EventsPage /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+          <Route path="/verified-hours" element={<ProtectedRoute><VerifiedHoursReportPage /></ProtectedRoute>} />
+          <Route path="/certificates" element={<ProtectedRoute><CertificatesPage /></ProtectedRoute>} />
+          <Route path="/certificates/:id" element={<ProtectedRoute><CertificateViewPage /></ProtectedRoute>} />
 
           <Route path="/admin/access-requests" element={<ProtectedRoute adminOnly><AdminAccessRequestsPage /></ProtectedRoute>} />
+          <Route path="/admin/certificates" element={<ProtectedRoute adminOnly><AdminCertificatesPage /></ProtectedRoute>} />
           <Route path="/admin/approvals" element={<ProtectedRoute adminOnly><AdminApprovalsPage /></ProtectedRoute>} />
           <Route path="/admin/log-hours" element={<ProtectedRoute adminOnly><AdminLogHoursForVolunteerPage /></ProtectedRoute>} />
           <Route path="/admin/events" element={<ProtectedRoute adminOnly><AdminEventsPage /></ProtectedRoute>} />

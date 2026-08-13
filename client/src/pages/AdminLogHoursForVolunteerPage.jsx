@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { fetchVolunteerRoster, fetchEvents, adminLogHoursForVolunteer, fetchAllHourLogs, writeAuditLog } from '../lib/api';
+import { fetchVolunteerRoster, fetchEvents, createHourLog, fetchAllHourLogs, writeAuditLog } from '../lib/api';
 
 export function AdminLogHoursForVolunteerPage() {
-  const { user } = useAuth();
   const [volunteers, setVolunteers] = useState([]);
   const [events, setEvents] = useState([]);
   const [recent, setRecent] = useState([]);
@@ -14,11 +12,11 @@ export function AdminLogHoursForVolunteerPage() {
   const [form, setForm] = useState({
     userId: '',
     activity: '',
+    description: '',
     log_date: '',
     hours: '',
     notes: '',
     event_id: '',
-    autoApprove: true,
   });
 
   async function load() {
@@ -46,24 +44,23 @@ export function AdminLogHoursForVolunteerPage() {
     setSuccess('');
     setSubmitting(true);
     try {
-      const created = await adminLogHoursForVolunteer({
-        userId: form.userId,
+      const created = await createHourLog({
+        user_id: form.userId,
         activity: form.activity,
+        description: form.description,
         log_date: form.log_date,
         hours: Number(form.hours),
-        notes: form.notes,
+        notes: form.notes || null,
         event_id: form.event_id ? Number(form.event_id) : null,
-        autoApprove: form.autoApprove,
-        adminId: user.id,
       });
-      writeAuditLog(form.autoApprove ? 'hours_approved' : 'hours_logged_for_volunteer', {
+      writeAuditLog('hours_logged_for_volunteer', {
         targetUserId: form.userId,
         targetId: created.id,
         details: { activity: form.activity, hours: Number(form.hours), logged_by_admin: true },
       });
       const volunteerName = volunteers.find((v) => v.id === form.userId)?.name;
-      setSuccess(`Logged ${form.hours}h for ${volunteerName}${form.autoApprove ? ' (approved)' : ' (pending your approval)'}.`);
-      setForm({ userId: '', activity: '', log_date: '', hours: '', notes: '', event_id: '', autoApprove: true });
+      setSuccess(`Logged ${form.hours}h for ${volunteerName} — pending review, same as any other submission.`);
+      setForm({ userId: '', activity: '', description: '', log_date: '', hours: '', notes: '', event_id: '' });
       await load();
     } catch (err) {
       setError(err.message || 'Could not log these hours');
@@ -79,7 +76,7 @@ export function AdminLogHoursForVolunteerPage() {
       <div className="page-header">
         <div>
           <h1>Log Hours for a Volunteer</h1>
-          <p>Enter hours on someone's behalf — e.g. after an in-person event they didn't log themselves.</p>
+          <p>Enter hours on someone's behalf — e.g. after an in-person event they didn't log themselves. Still goes through the normal Approvals review, like every other submission.</p>
         </div>
       </div>
 
@@ -108,31 +105,25 @@ export function AdminLogHoursForVolunteerPage() {
           </div>
           <div className="form-field">
             <label>Activity</label>
-            <input required value={form.activity} onChange={(e) => update('activity', e.target.value)} placeholder="e.g. Weekend teaching session" />
+            <input required minLength={3} maxLength={200} value={form.activity} onChange={(e) => update('activity', e.target.value)} placeholder="e.g. Weekend teaching session" />
+          </div>
+          <div className="form-field">
+            <label>Description</label>
+            <textarea required minLength={10} maxLength={2000} rows={3} value={form.description} onChange={(e) => update('description', e.target.value)} placeholder="What did the volunteer do? (10-2000 characters)" />
           </div>
           <div className="form-row">
             <div className="form-field">
               <label>Date</label>
-              <input type="date" required value={form.log_date} onChange={(e) => update('log_date', e.target.value)} />
+              <input type="date" required min="2020-01-01" max={new Date().toISOString().slice(0, 10)} value={form.log_date} onChange={(e) => update('log_date', e.target.value)} />
             </div>
             <div className="form-field">
               <label>Hours</label>
-              <input type="number" step="0.25" min="0.25" required value={form.hours} onChange={(e) => update('hours', e.target.value)} />
+              <input type="number" step="0.5" min="0.5" max="24" required value={form.hours} onChange={(e) => update('hours', e.target.value)} />
             </div>
           </div>
           <div className="form-field">
             <label>Notes (optional)</label>
             <textarea rows={2} value={form.notes} onChange={(e) => update('notes', e.target.value)} />
-          </div>
-          <div className="form-field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <input
-              type="checkbox"
-              id="autoApprove"
-              checked={form.autoApprove}
-              onChange={(e) => update('autoApprove', e.target.checked)}
-              style={{ width: 'auto' }}
-            />
-            <label htmlFor="autoApprove" style={{ margin: 0 }}>Mark as approved immediately</label>
           </div>
           <button className="btn btn-primary" type="submit" disabled={submitting}>
             {submitting ? 'Saving…' : 'Log hours'}

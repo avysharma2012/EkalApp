@@ -17,6 +17,7 @@ export function Navbar() {
         { to: '/', label: 'Dashboard' },
         { to: '/admin/access-requests', label: 'Access Requests' },
         { to: '/admin/approvals', label: 'Approvals' },
+        { to: '/admin/certificates', label: 'Certificates' },
         { to: '/admin/log-hours', label: 'Log Hours' },
         { to: '/admin/events', label: 'Events' },
         { to: '/admin/volunteers', label: 'Volunteers' },

@@ -269,3 +269,39 @@ a { color: var(--rust); }
 }
 .profile-field .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
 .profile-field .value { font-size: 16px; font-weight: 600; margin-top: 2px; }
+
+/* Signature preview — HRS-06/CERT-05 */
+.signature-preview {
+  font-family: 'Segoe Script', 'Brush Script MT', 'Lucida Handwriting', cursive;
+  font-size: 28px;
+  color: var(--ink);
+  padding: 8px 4px;
+  min-height: 40px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Printable documents — HRS-09 / CERT-07 */
+.print-doc { max-width: 800px; margin: 0 auto; }
+.print-doc-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.print-doc table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+.print-doc th, .print-doc td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 14px; }
+.print-doc .signature-block { margin-top: 40px; display: flex; justify-content: space-between; align-items: flex-end; }
+
+.certificate-doc {
+  background: var(--cream);
+  border: 3px solid var(--rust);
+  border-radius: 4px;
+  padding: 48px;
+  text-align: center;
+}
+.certificate-doc .cert-org { color: var(--rust); font-weight: 800; font-size: 26px; letter-spacing: 1px; }
+.certificate-doc .cert-title { font-size: 16px; color: var(--ink); margin: 8px 0 24px; }
+.certificate-doc .cert-name { font-size: 28px; font-weight: 800; margin: 8px 0 20px; }
+.certificate-doc table { text-align: left; }
+
+@media print {
+  .navbar, .no-print { display: none !important; }
+  .app-main { max-width: none !important; padding: 0 !important; }
+  body { background: #fff; }
+  .certificate-doc { border-color: #b3410c; }
+}
