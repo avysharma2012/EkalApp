@@ -15,6 +15,7 @@ import { AdminLogHoursForVolunteerPage } from './pages/AdminLogHoursForVolunteer
 import { AdminEventsPage } from './pages/AdminEventsPage';
 import { AdminVolunteersPage } from './pages/AdminVolunteersPage';
 import { AdminAnnouncementsPage } from './pages/AdminAnnouncementsPage';
+import { AdminChaptersPage } from './pages/AdminChaptersPage';
 
 function DashboardRouter() {
   const { isAdmin } = useAuth();
@@ -40,6 +41,7 @@ function App() {
           <Route path="/admin/events" element={<ProtectedRoute adminOnly><AdminEventsPage /></ProtectedRoute>} />
           <Route path="/admin/volunteers" element={<ProtectedRoute adminOnly><AdminVolunteersPage /></ProtectedRoute>} />
           <Route path="/admin/announcements" element={<ProtectedRoute adminOnly><AdminAnnouncementsPage /></ProtectedRoute>} />
+          <Route path="/admin/chapters" element={<ProtectedRoute superAdminOnly><AdminChaptersPage /></ProtectedRoute>} />
         </Routes>
       </main>
     </div>

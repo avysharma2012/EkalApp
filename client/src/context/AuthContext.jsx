@@ -6,15 +6,21 @@ const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
+  const [roleRow, setRoleRow] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const loadProfile = useCallback(async (userId) => {
     if (!userId) {
       setProfile(null);
+      setRoleRow(null);
       return;
     }
-    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    if (!error) setProfile(data);
+    const [{ data: profileData, error: profileErr }, { data: roleData }] = await Promise.all([
+      supabase.from('profiles').select('*').eq('id', userId).single(),
+      supabase.from('user_roles').select('*').eq('user_id', userId).maybeSingle(),
+    ]);
+    if (!profileErr) setProfile(profileData);
+    setRoleRow(roleData ?? null);
   }, []);
 
   useEffect(() => {
@@ -35,7 +41,7 @@ export function AuthProvider({ children }) {
     const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { name, country, role: 'volunteer' } },
+      options: { data: { name, country } },
     });
     if (error) throw error;
   }
@@ -49,11 +55,19 @@ export function AuthProvider({ children }) {
     await supabase.auth.signOut();
   }
 
+  const isSuperAdmin = roleRow?.role === 'super_admin';
+  const isChapterAdmin = roleRow?.role === 'chapter_admin';
+  const isAdmin = isSuperAdmin || isChapterAdmin;
+
   const value = {
     session,
     user: session?.user ?? null,
     profile,
-    isAdmin: profile?.role === 'admin',
+    chapterId: profile?.chapter_id ?? null,
+    isAdmin,
+    isChapterAdmin,
+    isSuperAdmin,
+    adminChapterId: isChapterAdmin ? roleRow.chapter_id : null,
     loading,
     register,
     login,

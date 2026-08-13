@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { fetchVolunteerRoster, fetchEvents, adminLogHoursForVolunteer, fetchAllHourLogs } from '../lib/api';
+import { fetchVolunteerRoster, fetchEvents, adminLogHoursForVolunteer, fetchAllHourLogs, writeAuditLog } from '../lib/api';
 
 export function AdminLogHoursForVolunteerPage() {
   const { user } = useAuth();
@@ -46,7 +46,7 @@ export function AdminLogHoursForVolunteerPage() {
     setSuccess('');
     setSubmitting(true);
     try {
-      await adminLogHoursForVolunteer({
+      const created = await adminLogHoursForVolunteer({
         userId: form.userId,
         activity: form.activity,
         log_date: form.log_date,
@@ -55,6 +55,11 @@ export function AdminLogHoursForVolunteerPage() {
         event_id: form.event_id ? Number(form.event_id) : null,
         autoApprove: form.autoApprove,
         adminId: user.id,
+      });
+      writeAuditLog(form.autoApprove ? 'hours_approved' : 'hours_logged_for_volunteer', {
+        targetUserId: form.userId,
+        targetId: created.id,
+        details: { activity: form.activity, hours: Number(form.hours), logged_by_admin: true },
       });
       const volunteerName = volunteers.find((v) => v.id === form.userId)?.name;
       setSuccess(`Logged ${form.hours}h for ${volunteerName}${form.autoApprove ? ' (approved)' : ' (pending your approval)'}.`);

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { fetchAnnouncements, createAnnouncement, deleteAnnouncement } from '../lib/api';
+import { fetchAnnouncements, createAnnouncement, deleteAnnouncement, writeAuditLog } from '../lib/api';
 
 export function AdminAnnouncementsPage() {
   const { user } = useAuth();
@@ -23,7 +23,8 @@ export function AdminAnnouncementsPage() {
     setError('');
     setSubmitting(true);
     try {
-      await createAnnouncement({ ...form, created_by: user.id });
+      const created = await createAnnouncement({ ...form, created_by: user.id });
+      writeAuditLog('announcement_created', { targetId: created.id, details: { title: created.title } });
       setForm({ title: '', body: '' });
       await load();
     } catch (err) {
@@ -34,7 +35,10 @@ export function AdminAnnouncementsPage() {
   }
 
   async function handleDelete(id) {
+    const title = announcements.find((a) => a.id === id)?.title;
+    if (!window.confirm(`Delete announcement "${title}"? This cannot be undone.`)) return;
     await deleteAnnouncement(id);
+    writeAuditLog('announcement_deleted', { targetId: id, details: { title } });
     await load();
   }
 

@@ -128,39 +128,111 @@ export function deleteAnnouncement(id) {
 
 // ---- Admin ----
 export async function fetchAdminStats() {
-  const [{ count: volunteerCount }, { count: pendingCount }, approvedRes, { count: upcomingEvents }] = await Promise.all([
-    supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'volunteer'),
+  const [{ count: totalProfiles }, { count: roleCount }, { count: pendingCount }, approvedRes, { count: upcomingEvents }] = await Promise.all([
+    supabase.from('profiles').select('*', { count: 'exact', head: true }),
+    supabase.from('user_roles').select('*', { count: 'exact', head: true }),
     supabase.from('hour_logs').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
     supabase.from('hour_logs').select('hours').eq('status', 'approved'),
     supabase.from('events').select('*', { count: 'exact', head: true }).gte('event_date', new Date().toISOString().slice(0, 10)),
   ]);
   const approvedHours = (approvedRes.data || []).reduce((sum, r) => sum + Number(r.hours), 0);
-  return { volunteerCount, pendingCount, approvedHours, upcomingEvents };
+  return { volunteerCount: (totalProfiles || 0) - (roleCount || 0), pendingCount, approvedHours, upcomingEvents };
 }
 
+// Returns every user (any role) with their computed role, chapter, and hours summary.
 export async function fetchVolunteers() {
-  const { data: volunteers, error } = await supabase.from('profiles').select('*').eq('role', 'volunteer').order('name');
+  const [{ data: profiles, error }, { data: roles }, { data: chapters }, { data: logs }] = await Promise.all([
+    supabase.from('profiles').select('*').order('name'),
+    supabase.from('user_roles').select('*'),
+    supabase.from('chapters').select('id, name'),
+    supabase.from('hour_logs').select('user_id, hours, status'),
+  ]);
   if (error) throw error;
-  const { data: logs } = await supabase.from('hour_logs').select('user_id, hours, status');
+
+  const roleByUser = Object.fromEntries((roles || []).map((r) => [r.user_id, r]));
+  const chapterNameById = Object.fromEntries((chapters || []).map((c) => [c.id, c.name]));
   const byUser = {};
   (logs || []).forEach((l) => {
     byUser[l.user_id] = byUser[l.user_id] || { approved_hours: 0, pending_count: 0 };
     if (l.status === 'approved') byUser[l.user_id].approved_hours += Number(l.hours);
     if (l.status === 'pending') byUser[l.user_id].pending_count += 1;
   });
-  return volunteers.map((v) => ({
+
+  return profiles.map((v) => ({
     ...v,
+    role: roleByUser[v.id]?.role || 'volunteer',
+    chapter_name: chapterNameById[v.chapter_id] || 'Unassigned',
     approved_hours: byUser[v.id]?.approved_hours || 0,
     pending_count: byUser[v.id]?.pending_count || 0,
   }));
 }
 
-export function promoteToAdmin(userId) {
-  return unwrap(supabase.from('profiles').update({ role: 'admin' }).eq('id', userId).select().single());
-}
-
 export function fetchVolunteerRoster() {
   return unwrap(supabase.from('profiles').select('id, name, email').order('name'));
+}
+
+// ---- Roles (RPCs — enforce self-modification and scope rules server-side) ----
+export function grantChapterAdmin(targetUser, targetChapter) {
+  return unwrap(supabase.rpc('grant_chapter_admin', { target_user: targetUser, target_chapter: targetChapter }));
+}
+
+export function grantSuperAdmin(targetUser) {
+  return unwrap(supabase.rpc('grant_super_admin', { target_user: targetUser }));
+}
+
+export function revokeAdminRole(targetUser) {
+  return unwrap(supabase.rpc('revoke_admin_role', { target_user: targetUser }));
+}
+
+// ---- Chapters ----
+export function fetchChapters() {
+  return unwrap(supabase.from('chapters').select('*').order('name'));
+}
+
+export function createChapter(chapter) {
+  return unwrap(supabase.from('chapters').insert(chapter).select().single());
+}
+
+export function updateChapter(id, patch) {
+  return unwrap(supabase.from('chapters').update(patch).eq('id', id).select().single());
+}
+
+export function deleteChapter(id) {
+  return unwrap(supabase.from('chapters').delete().eq('id', id));
+}
+
+export function moveVolunteerToChapter(targetUser, newChapter) {
+  return unwrap(supabase.rpc('move_volunteer_to_chapter', { target_user: targetUser, new_chapter: newChapter }));
+}
+
+// ---- Audit log ----
+// Fire-and-forget by design (GLOBAL-04): a logging failure must never block
+// the mutating action that triggered it.
+export async function writeAuditLog(actionType, { targetUserId = null, targetId = null, details = null } = {}) {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { error } = await supabase.from('audit_log').insert({
+      actor_id: user.id,
+      action_type: actionType,
+      target_user_id: targetUserId,
+      target_id: targetId != null ? String(targetId) : null,
+      details,
+    });
+    if (error) console.error('audit log write failed', error);
+  } catch (e) {
+    console.error('audit log write failed', e);
+  }
+}
+
+export function fetchAuditLog() {
+  return unwrap(
+    supabase
+      .from('audit_log')
+      .select('*, actor:profiles!audit_log_actor_id_fkey(name, email), target:profiles!audit_log_target_user_id_fkey(name, email)')
+      .order('created_at', { ascending: false })
+      .limit(500)
+  );
 }
 
 export function adminLogHoursForVolunteer({ userId, activity, log_date, hours, notes, event_id, autoApprove, adminId }) {

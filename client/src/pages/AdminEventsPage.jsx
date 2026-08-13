@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { fetchEvents, createEvent, deleteEvent, fetchEventSignups } from '../lib/api';
+import { fetchEvents, createEvent, deleteEvent, fetchEventSignups, writeAuditLog } from '../lib/api';
 
 export function AdminEventsPage() {
   const { user } = useAuth();
@@ -30,7 +30,8 @@ export function AdminEventsPage() {
     setError('');
     setSubmitting(true);
     try {
-      await createEvent({ ...form, created_by: user.id });
+      const created = await createEvent({ ...form, created_by: user.id });
+      writeAuditLog('event_created', { targetId: created.id, details: { title: created.title } });
       setForm({ title: '', description: '', event_date: '', location: '' });
       await load();
     } catch (err) {
@@ -41,9 +42,12 @@ export function AdminEventsPage() {
   }
 
   async function handleDelete(id) {
+    const title = events.find((e) => e.id === id)?.title;
+    if (!window.confirm(`Delete "${title}"? Everyone's signups for this event will also be deleted. This cannot be undone.`)) return;
     setError('');
     try {
       await deleteEvent(id);
+      writeAuditLog('event_deleted', { targetId: id, details: { title } });
       if (expandedId === id) setExpandedId(null);
       await load();
     } catch (err) {

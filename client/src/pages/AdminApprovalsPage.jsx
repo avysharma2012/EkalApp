@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { fetchAllHourLogs, reviewHourLog } from '../lib/api';
+import { fetchAllHourLogs, reviewHourLog, writeAuditLog } from '../lib/api';
 
 const TABS = [
   { key: 'pending', label: 'Pending' },
@@ -31,7 +31,13 @@ export function AdminApprovalsPage() {
     setBusyId(id);
     setError('');
     try {
+      const log = logs.find((l) => l.id === id);
       await reviewHourLog(id, decision, user.id);
+      writeAuditLog(decision === 'approved' ? 'hours_approved' : 'hours_rejected', {
+        targetUserId: log?.user_id,
+        targetId: id,
+        details: { activity: log?.activity, hours: log?.hours },
+      });
       await load(tab);
     } catch (err) {
       setError(err.message || 'Could not update this submission');

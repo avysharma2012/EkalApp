@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export function Navbar() {
-  const { user, profile, isAdmin, logout } = useAuth();
+  const { user, profile, isAdmin, isSuperAdmin, isChapterAdmin, logout } = useAuth();
   const navigate = useNavigate();
 
   if (!user) return null;
@@ -20,6 +20,7 @@ export function Navbar() {
         { to: '/admin/events', label: 'Events' },
         { to: '/admin/volunteers', label: 'Volunteers' },
         { to: '/admin/announcements', label: 'Announcements' },
+        ...(isSuperAdmin ? [{ to: '/admin/chapters', label: 'Chapters' }] : []),
       ]
     : [
         { to: '/', label: 'Dashboard' },
@@ -27,6 +28,8 @@ export function Navbar() {
         { to: '/events', label: 'Events' },
         { to: '/profile', label: 'Profile' },
       ];
+
+  const roleLabel = isSuperAdmin ? 'Super Admin' : isChapterAdmin ? 'Chapter Admin' : 'Volunteer';
 
   return (
     <header className="navbar">
@@ -43,7 +46,7 @@ export function Navbar() {
       </nav>
       <div className="navbar-user">
         <span className="user-name">{profile?.name || user.email}</span>
-        <span className="role-badge">{isAdmin ? 'Admin' : 'Volunteer'}</span>
+        <span className="role-badge">{roleLabel}</span>
         <button className="btn btn-ghost" onClick={handleLogout}>Sign out</button>
       </div>
     </header>
