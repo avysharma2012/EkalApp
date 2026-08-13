@@ -24,6 +24,7 @@ import { VerifiedHoursReportPage } from './pages/VerifiedHoursReportPage';
 import { CertificatesPage } from './pages/CertificatesPage';
 import { CertificateViewPage } from './pages/CertificateViewPage';
 import { AdminCertificatesPage } from './pages/AdminCertificatesPage';
+import { AnnouncementsPage } from './pages/AnnouncementsPage';
 
 function DashboardRouter() {
   const { isAdmin } = useAuth();
@@ -49,6 +50,7 @@ function App() {
           <Route path="/verified-hours" element={<ProtectedRoute><VerifiedHoursReportPage /></ProtectedRoute>} />
           <Route path="/certificates" element={<ProtectedRoute><CertificatesPage /></ProtectedRoute>} />
           <Route path="/certificates/:id" element={<ProtectedRoute><CertificateViewPage /></ProtectedRoute>} />
+          <Route path="/announcements" element={<ProtectedRoute><AnnouncementsPage /></ProtectedRoute>} />
 
           <Route path="/admin/access-requests" element={<ProtectedRoute adminOnly><AdminAccessRequestsPage /></ProtectedRoute>} />
           <Route path="/admin/certificates" element={<ProtectedRoute adminOnly><AdminCertificatesPage /></ProtectedRoute>} />

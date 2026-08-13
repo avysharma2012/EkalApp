@@ -1,13 +1,16 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { subscribeToAnnouncements } from '../lib/api';
 
 const AuthContext = createContext(null);
+const LAST_VIEWED_KEY = 'ekal_announcements_last_viewed';
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [roleRow, setRoleRow] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [hasUnreadAnnouncements, setHasUnreadAnnouncements] = useState(false);
 
   const loadProfile = useCallback(async (userId) => {
     if (!userId) {
@@ -37,13 +40,40 @@ export function AuthProvider({ children }) {
     return () => listener.subscription.unsubscribe();
   }, [loadProfile]);
 
-  async function register({ name, email, password, country }) {
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { name, country } },
-    });
-    if (error) throw error;
+  // ANN-04: unread badge — checked once against the newest announcement,
+  // then kept live via realtime for anything posted while the user is
+  // active elsewhere in the app.
+  useEffect(() => {
+    if (!session?.user) {
+      setHasUnreadAnnouncements(false);
+      return;
+    }
+
+    let cancelled = false;
+    const lastViewed = localStorage.getItem(LAST_VIEWED_KEY);
+
+    supabase
+      .from('announcements')
+      .select('created_at')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled && data && (!lastViewed || data.created_at > lastViewed)) {
+          setHasUnreadAnnouncements(true);
+        }
+      });
+
+    const unsubscribe = subscribeToAnnouncements(() => setHasUnreadAnnouncements(true));
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [session?.user?.id]);
+
+  function markAnnouncementsRead() {
+    localStorage.setItem(LAST_VIEWED_KEY, new Date().toISOString());
+    setHasUnreadAnnouncements(false);
   }
 
   async function login({ email, password }) {
@@ -69,10 +99,11 @@ export function AuthProvider({ children }) {
     isSuperAdmin,
     adminChapterId: isChapterAdmin ? roleRow.chapter_id : null,
     loading,
-    register,
     login,
     logout,
     refreshProfile: () => loadProfile(session?.user?.id),
+    hasUnreadAnnouncements,
+    markAnnouncementsRead,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -76,6 +76,7 @@ export function VolunteerDashboard() {
               <div style={{ fontSize: 13, color: 'var(--muted)' }}>{a.body}</div>
             </div>
           ))}
+          <Link to="/announcements" className="btn btn-secondary btn-sm" style={{ display: 'inline-block', marginTop: 12 }}>View all announcements</Link>
         </div>
       </div>
     </div>

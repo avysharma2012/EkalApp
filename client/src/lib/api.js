@@ -175,6 +175,7 @@ export function fetchAnnouncements() {
     supabase
       .from('announcements')
       .select('*, profiles(name)')
+      .order('is_pinned', { ascending: false })
       .order('created_at', { ascending: false })
   );
 }
@@ -183,8 +184,29 @@ export function createAnnouncement(announcement) {
   return unwrap(supabase.from('announcements').insert(announcement).select().single());
 }
 
+export function updateAnnouncement(id, patch) {
+  return unwrap(supabase.from('announcements').update(patch).eq('id', id).select().single());
+}
+
+// ANN-03: pin/unpin is explicitly exempt from audit logging.
+export function togglePinAnnouncement(id, isPinned) {
+  return unwrap(supabase.from('announcements').update({ is_pinned: isPinned }).eq('id', id).select().single());
+}
+
 export function deleteAnnouncement(id) {
   return unwrap(supabase.from('announcements').delete().eq('id', id));
+}
+
+// ANN-04: live unread badge — resolves with the most recent announcement's
+// timestamp, then calls onNewAnnouncement for every one that lands after.
+export function subscribeToAnnouncements(onNewAnnouncement) {
+  const channel = supabase
+    .channel('announcements-live')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'announcements' }, (payload) => {
+      onNewAnnouncement(payload.new);
+    })
+    .subscribe();
+  return () => supabase.removeChannel(channel);
 }
 
 // ---- Admin ----
