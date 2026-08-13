@@ -6,6 +6,18 @@ async function unwrap(queryPromise) {
   return data;
 }
 
+async function fetchWithTimeout(url, options = {}, timeoutMs = 2500) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+    return await res.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ---- Events ----
 export async function fetchEvents() {
   const { data: events, error } = await supabase.from('events').select('*').order('event_date', { ascending: true });
@@ -233,6 +245,172 @@ export function fetchAuditLog() {
       .order('created_at', { ascending: false })
       .limit(500)
   );
+}
+
+// ---- Geolocation (best-effort, short-timeout, never blocks the caller) ----
+export async function lookupIpGeolocation() {
+  try {
+    return await fetchWithTimeout('https://ipapi.co/json/', {}, 2500);
+  } catch {
+    return null;
+  }
+}
+
+export async function lookupZip(zip) {
+  try {
+    return await fetchWithTimeout(`https://api.zippopotam.us/us/${encodeURIComponent(zip)}`, {}, 2500);
+  } catch {
+    return null;
+  }
+}
+
+export async function reverseGeocode(lat, lon) {
+  try {
+    return await fetchWithTimeout(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=10`,
+      {},
+      2500
+    );
+  } catch {
+    return null;
+  }
+}
+
+export function getBrowserLocation() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+      () => resolve(null),
+      { timeout: 3000 }
+    );
+  });
+}
+
+// Best-effort match of a city/state pair to an existing chapter — never throws.
+export function matchChapterToLocation(chapters, { city, state } = {}) {
+  if (!state) return null;
+  const stateNorm = state.trim().toLowerCase();
+  const root = chapters.find((c) => !c.parent_id && !c.is_unassigned && c.state?.trim().toLowerCase() === stateNorm);
+  if (!root) return null;
+  if (city) {
+    const cityNorm = city.trim().toLowerCase();
+    const sub = chapters.find((c) => c.parent_id === root.id && c.city?.trim().toLowerCase() === cityNorm);
+    if (sub) return sub.id;
+  }
+  return root.id;
+}
+
+// ---- Visitor logging (GATE-09 / VIS-01) — unauthenticated, best-effort ----
+const BOT_SIGNATURES = ['bot', 'crawler', 'spider', 'curl', 'wget', 'python-requests', 'headless', 'scrapy', 'phantomjs'];
+
+export function classifyUserAgent(userAgent) {
+  const ua = (userAgent || '').toLowerCase();
+  const hit = BOT_SIGNATURES.find((sig) => ua.includes(sig));
+  if (hit) return { isBot: true, reason: `user agent contains "${hit}"` };
+  if (!ua) return { isBot: true, reason: 'missing user agent' };
+  return { isBot: false, reason: null };
+}
+
+export async function logVisitor(path, geo) {
+  try {
+    const { isBot, reason } = classifyUserAgent(navigator.userAgent);
+    await supabase.from('visitor_logs').insert({
+      path,
+      ip: geo?.ip || null,
+      user_agent: navigator.userAgent,
+      country: geo?.country_name || geo?.country || null,
+      region: geo?.region || null,
+      city: geo?.city || null,
+      is_bot: isBot,
+      bot_reason: reason,
+    });
+  } catch (e) {
+    console.error('visitor log write failed', e);
+  }
+}
+
+// ---- Access requests (GATE / AREQ) ----
+export async function submitAccessRequest({ name, email, chapterId, geo }) {
+  const { error } = await supabase.rpc('submit_access_request', {
+    p_name: name,
+    p_email: email,
+    p_chapter_id: chapterId || null,
+    p_country: geo?.country_name || geo?.country || null,
+    p_region: geo?.region || null,
+    p_city: geo?.city || null,
+  });
+  if (error) throw error;
+}
+
+export async function checkAccessRequestStatus(email) {
+  const { data, error } = await supabase.rpc('check_access_request_status', { target_email: email });
+  if (error) throw error;
+  return data; // 'pending' | 'approved' | 'rejected' | null
+}
+
+export function fetchAccessRequests() {
+  return unwrap(
+    supabase
+      .from('access_requests')
+      .select('*, chapters(name)')
+      .order('created_at', { ascending: false })
+  );
+}
+
+export async function approveAccessRequest(requestId, chapterId) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/approve-access-request`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`,
+      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify({ requestId, chapterId }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || 'Could not approve this request');
+  return body;
+}
+
+export async function rejectAccessRequest(requestId, reason) {
+  const { data: { user } } = await supabase.auth.getUser();
+  return unwrap(
+    supabase
+      .from('access_requests')
+      .update({ status: 'rejected', rejection_reason: reason || null, reviewed_by: user?.id, reviewed_at: new Date().toISOString() })
+      .eq('id', requestId)
+      .select()
+      .single()
+  );
+}
+
+// ---- Auth extensions ----
+export async function resolveLoginEmail(identifier) {
+  const { data, error } = await supabase.rpc('resolve_login_email', { identifier });
+  if (error) throw error;
+  return data;
+}
+
+export async function sendMagicLink(email) {
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: window.location.origin + window.location.pathname, shouldCreateUser: false },
+  });
+  if (error) throw error;
+}
+
+export async function sendPasswordReset(email) {
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin + window.location.pathname,
+  });
+  if (error) throw error;
+}
+
+export async function updatePassword(newPassword) {
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) throw error;
 }
 
 export function adminLogHoursForVolunteer({ userId, activity, log_date, hours, notes, event_id, autoApprove, adminId }) {

@@ -15,6 +15,7 @@ export function Navbar() {
   const links = isAdmin
     ? [
         { to: '/', label: 'Dashboard' },
+        { to: '/admin/access-requests', label: 'Access Requests' },
         { to: '/admin/approvals', label: 'Approvals' },
         { to: '/admin/log-hours', label: 'Log Hours' },
         { to: '/admin/events', label: 'Events' },
