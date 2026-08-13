@@ -19,6 +19,7 @@ import { AdminVolunteersPage } from './pages/AdminVolunteersPage';
 import { AdminAnnouncementsPage } from './pages/AdminAnnouncementsPage';
 import { AdminChaptersPage } from './pages/AdminChaptersPage';
 import { AdminAccessRequestsPage } from './pages/AdminAccessRequestsPage';
+import { AdminBulkImportPage } from './pages/AdminBulkImportPage';
 
 function DashboardRouter() {
   const { isAdmin } = useAuth();
@@ -47,6 +48,7 @@ function App() {
           <Route path="/admin/log-hours" element={<ProtectedRoute adminOnly><AdminLogHoursForVolunteerPage /></ProtectedRoute>} />
           <Route path="/admin/events" element={<ProtectedRoute adminOnly><AdminEventsPage /></ProtectedRoute>} />
           <Route path="/admin/volunteers" element={<ProtectedRoute adminOnly><AdminVolunteersPage /></ProtectedRoute>} />
+          <Route path="/admin/bulk-import" element={<ProtectedRoute adminOnly><AdminBulkImportPage /></ProtectedRoute>} />
           <Route path="/admin/announcements" element={<ProtectedRoute adminOnly><AdminAnnouncementsPage /></ProtectedRoute>} />
           <Route path="/admin/chapters" element={<ProtectedRoute superAdminOnly><AdminChaptersPage /></ProtectedRoute>} />
 

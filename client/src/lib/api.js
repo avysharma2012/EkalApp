@@ -6,6 +6,22 @@ async function unwrap(queryPromise) {
   return data;
 }
 
+async function callEdgeFunction(name, body) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${name}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`,
+      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify(body),
+  });
+  const responseBody = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(responseBody.error || `${name} failed`);
+  return responseBody;
+}
+
 async function fetchWithTimeout(url, options = {}, timeoutMs = 2500) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -358,20 +374,8 @@ export function fetchAccessRequests() {
   );
 }
 
-export async function approveAccessRequest(requestId, chapterId) {
-  const { data: { session } } = await supabase.auth.getSession();
-  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/approve-access-request`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${session.access_token}`,
-      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-    },
-    body: JSON.stringify({ requestId, chapterId }),
-  });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error || 'Could not approve this request');
-  return body;
+export function approveAccessRequest(requestId, chapterId) {
+  return callEdgeFunction('approve-access-request', { requestId, chapterId });
 }
 
 export async function rejectAccessRequest(requestId, reason) {
@@ -428,4 +432,44 @@ export function adminLogHoursForVolunteer({ userId, activity, log_date, hours, n
     payload.reviewed_at = new Date().toISOString();
   }
   return unwrap(supabase.from('hour_logs').insert(payload).select().single());
+}
+
+// ---- Admin user management (USER-02/03/10) ----
+export function createUser({ name, email, password, chapterId }) {
+  return callEdgeFunction('admin-create-user', { name, email, password, chapterId });
+}
+
+export function deleteUser(targetUserId) {
+  return callEdgeFunction('admin-delete-user', { targetUserId });
+}
+
+// Resolves a chapter name (optionally disambiguated by parent chapter name)
+// to a chapter id. Returns { chapterId, error } — never throws, so bulk
+// import can record a per-row reason instead of aborting the whole batch.
+export function resolveChapterByName(chapters, chapterName, parentName) {
+  if (!chapterName) return { chapterId: null, error: null };
+  const nameNorm = chapterName.trim().toLowerCase();
+  let matches = chapters.filter((c) => c.name.trim().toLowerCase() === nameNorm);
+  if (matches.length === 0) return { chapterId: null, error: `No chapter named "${chapterName}"` };
+  if (matches.length > 1) {
+    if (!parentName) return { chapterId: null, error: `Multiple chapters named "${chapterName}" — specify a parent chapter to disambiguate` };
+    const parentNorm = parentName.trim().toLowerCase();
+    const parent = chapters.find((c) => c.name.trim().toLowerCase() === parentNorm && !c.parent_id);
+    if (!parent) return { chapterId: null, error: `No parent chapter named "${parentName}"` };
+    matches = matches.filter((c) => c.parent_id === parent.id);
+    if (matches.length === 0) return { chapterId: null, error: `"${chapterName}" is not a sub-chapter of "${parentName}"` };
+  }
+  return { chapterId: matches[0].id, error: null };
+}
+
+// ---- Event enrollment (USER-08) ----
+export function enrollUserInEvent(eventId, targetUserId, { autoApproveIntent = false, enrolledBy } = {}) {
+  return unwrap(
+    supabase.from('event_signups').insert({
+      event_id: eventId,
+      user_id: targetUserId,
+      enrolled_by: enrolledBy,
+      auto_approve_intent: autoApproveIntent,
+    })
+  );
 }
